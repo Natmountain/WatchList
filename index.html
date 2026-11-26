@@ -31,6 +31,18 @@ button{font:inherit;border:0;border-radius:12px;padding:0 16px;cursor:pointer}
 .banner.on{display:block}
 .search{display:block;width:100%;margin-top:16px;font:inherit;padding:11px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--text);-webkit-appearance:none;appearance:none}
 .search:focus{outline:none;border-color:var(--accent)}
+details.imp{margin-top:12px}
+details.imp summary{cursor:pointer;color:var(--muted);font-size:14px;padding:4px 0;list-style:none}
+details.imp summary::-webkit-details-marker{display:none}
+details.imp summary::before{content:"＋ "}
+details.imp[open] summary::before{content:"－ "}
+.imp .box{margin-top:8px;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.imp textarea{display:block;width:100%;min-height:130px;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--text);resize:vertical}
+.imp textarea:focus{outline:none;border-color:var(--accent)}
+.imp .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.imp .row .go,.imp .row .paste{padding:11px 16px}
+.imp .count{flex:1;font-size:13px;color:var(--muted);min-width:90px}
+.imp .hint{font-size:12px;color:var(--muted);margin:0 0 8px}
 .tabs.dim{opacity:.4}
 .tabs{display:flex;gap:6px;margin:18px 0 10px}
 .tabs button{padding:7px 13px;background:transparent;color:var(--muted);border:1.5px solid var(--line);border-radius:99px;font-size:14px}
@@ -57,6 +69,18 @@ li.done .chk{background:var(--ok);border-color:var(--ok)}
     <button class="go" id="go">Add</button>
   </div>
   <div class="banner" id="banner">Opened from your shortcut. Tap <b>Paste</b> to add the title you just typed.</div>
+  <details class="imp" id="imp">
+    <summary>Import a list</summary>
+    <div class="box">
+      <p class="hint">Paste a bulleted or numbered list, one title per line, or choose a text file. Titles already on your list are skipped.</p>
+      <textarea id="bulk" placeholder="• Inception&#10;• The Office&#10;• Parasite" aria-label="List to import"></textarea>
+      <div class="row">
+        <label class="paste" style="padding:11px 16px;border-radius:12px;cursor:pointer">Choose file<input id="file" type="file" accept=".txt,.md,.csv,text/plain" hidden></label>
+        <span class="count" id="cnt"></span>
+        <button class="go" id="bulkgo" disabled>Add all</button>
+      </div>
+    </div>
+  </details>
   <input class="search" id="q" type="search" placeholder="Search your list…" autocomplete="off" autocorrect="off" enterkeyhint="search" aria-label="Search your list">
   <div class="tabs" id="tabs">
     <button data-f="todo" class="on">To watch</button>
@@ -81,7 +105,7 @@ function keyOf(t){
 }
 function norm(t){return t.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'')}
 function matches(title,q){var nq=norm(q);return nq?norm(title).includes(nq):title.toLowerCase().includes(q.toLowerCase())}
-function toast(m){toastEl.textContent=m;toastEl.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){toastEl.classList.remove('on')},2400)}
+function toast(m,ms){toastEl.textContent=m;toastEl.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){toastEl.classList.remove('on')},ms||2400)}
 
 /* ---------- storage: this device only (localStorage) ---------- */
 var LS='watchlist-v1';
@@ -132,6 +156,39 @@ async function remove(id){
   catch(e){items.set(id,r);render();toast('Couldn’t remove. Try again.')}
 }
 
+/* ---------- import ---------- */
+function parseList(text){
+  var out=[], seen=new Set();
+  text.replace(/\r/g,'').replace(/[•●◦▪‣∙·]/g,'\n').split('\n').forEach(function(line){
+    var re=/^\s*(?:[-*–—]+\s*|\d+[.)]\s+|\[[ xX]?\]\s*)/, t=line.replace(re,'').replace(re,'').trim().replace(/\s+/g,' ');
+    if(!t) return;
+    var k=keyOf(t); if(seen.has(k)) return;
+    seen.add(k); out.push(t);
+  });
+  return out;
+}
+async function importAll(){
+  var titles=parseList($('#bulk').value);
+  if(!titles.length||!store) return;
+  var base=Date.now(), n=titles.length, added=0, skipped=0, jobs=[];
+  titles.forEach(function(t,i){
+    var id=keyOf(t);
+    if(items.has(id)){skipped++;return}
+    var rec={title:t,watched:false,added:base+(n-i)};
+    items.set(id,Object.assign({id:id},rec));
+    jobs.push(store.set(id,rec));added++;
+  });
+  render();
+  try{await Promise.all(jobs)}catch(e){toast('Couldn’t save everything on this device.');return}
+  $('#bulk').value='';updateCount();
+  toast('Added '+added+(skipped?' · '+skipped+' already on your list':''),4000);
+}
+function updateCount(){
+  var n=parseList($('#bulk').value).length;
+  $('#cnt').textContent=n?n+(n===1?' title found':' titles found'):'';
+  $('#bulkgo').disabled=!n;
+}
+
 /* ---------- render ---------- */
 function render(){
   var all=Array.from(items.values()).sort(function(a,b){return (b.added||0)-(a.added||0)});
@@ -164,6 +221,15 @@ function render(){
 
 /* ---------- wiring ---------- */
 $('#go').onclick=submit;
+$('#bulk').addEventListener('input',updateCount);
+$('#bulkgo').onclick=importAll;
+$('#file').addEventListener('change',function(e){
+  var f=e.target.files&&e.target.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){var b=$('#bulk');b.value=(b.value?b.value.replace(/\s+$/,'')+'\n':'')+String(r.result||'');updateCount()};
+  r.onerror=function(){toast('Couldn’t read that file.')};
+  r.readAsText(f);e.target.value='';
+});
 qEl.addEventListener('input',render);
 qEl.addEventListener('keydown',function(e){if(e.key==='Enter')qEl.blur()});
 $('#paste').onclick=pasteAdd;
@@ -181,3 +247,4 @@ init();
 </script>
 </body>
 </html>
+

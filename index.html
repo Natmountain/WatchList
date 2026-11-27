@@ -71,17 +71,38 @@ li.done .chk{background:var(--ok);border-color:var(--ok)}
 .toast.on{opacity:1;transform:translateX(-50%);pointer-events:auto}
 .toast button{background:transparent;color:var(--accent);font-weight:700;padding:0}
 .note{font-size:12px;color:var(--muted);margin-top:22px;text-align:center}
+#home[hidden],#app[hidden]{display:none}
+#home{min-height:calc(100vh - 40px);display:grid;gap:40px;align-content:center;padding-bottom:80px}
+.tile{display:flex;align-items:center;gap:16px;width:100%;text-align:left;padding:14px 16px;border-radius:22px;background:var(--card);border:1px solid var(--line);color:var(--text)}
+.tile .ico{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;font-style:normal;flex:none}
+.tile .tx{display:block;min-width:0}
+.tile .tx b{display:block;font-size:19px;font-weight:600}
+.tile .tx small{display:block;color:var(--muted);font-size:15px;margin-top:2px}
+.tile.m .ico{background:linear-gradient(#fdeadf,#f8cfb4)}
+.tile.g .ico{background:linear-gradient(#e3f3e6,#c4e6cb)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .tile.m .ico{background:linear-gradient(#43301b,#2e1a05)}:root:not([data-theme="light"]) .tile.g .ico{background:linear-gradient(#1f3a26,#10261a)}}
+:root[data-theme="dark"] .tile.m .ico{background:linear-gradient(#43301b,#2e1a05)}
+:root[data-theme="dark"] .tile.g .ico{background:linear-gradient(#1f3a26,#10261a)}
+#back{font-size:20px;padding:4px 14px;line-height:1}
+:root[data-section="games"]{--bg:#f0f6f0;--line:#d9e6da;--accent:#2b8a3e;--accent-t:#fff;--ok:#2b8a3e}
+@media (prefers-color-scheme:dark){:root[data-section="games"]:not([data-theme="light"]){--bg:#0f1611;--card:#18211a;--line:#2a372c;--muted:#8fa393;--accent:#51cf66;--accent-t:#0e1a10;--ok:#51cf66}}
+:root[data-theme="dark"][data-section="games"]{--bg:#0f1611;--card:#18211a;--line:#2a372c;--muted:#8fa393;--accent:#51cf66;--accent-t:#0e1a10;--ok:#51cf66}
 </style>
 </head>
 <body>
 <main>
-  <div class="top"><h1>🎬 Watchlist</h1><button class="paste sm" id="rand">🎲 Pick one</button></div>
+  <div id="home">
+    <button class="tile m" id="go-movies"><i class="ico">🎬</i><span class="tx"><b>Movies &amp; shows</b><small>Watchlist</small></span></button>
+    <button class="tile g" id="go-games"><i class="ico">🎮</i><span class="tx"><b>Games</b><small>Game list</small></span></button>
+  </div>
+  <div id="app" hidden>
+  <div class="top"><div class="row" style="flex-wrap:nowrap;gap:10px"><button class="paste" id="back" aria-label="Back to home">‹</button><h1 id="ttl"></h1></div><button class="paste sm" id="rand">🎲 Pick one</button></div>
   <div class="add">
     <input class="field" id="inp" type="text" placeholder="Movie or show…" autocomplete="off" autocapitalize="words" enterkeyhint="done" aria-label="Movie or show title">
     <button class="paste" id="paste" title="Paste from clipboard">Paste</button>
     <button class="go" id="go">Add</button>
   </div>
-  <div class="addas">Add as <select id="newtype" aria-label="Type for new titles"><option value="">no type</option><option value="movie">movie</option><option value="show">show</option></select></div>
+  <div class="addas">Add as <select id="newtype" aria-label="Type for new titles"></select></div>
   <div class="banner" id="banner">Opened from your shortcut. Tap <b>Paste</b> to add the title you just typed.</div>
   <div class="pick" id="pick" hidden></div>
   <details class="imp">
@@ -102,9 +123,10 @@ li.done .chk{background:var(--ok);border-color:var(--ok)}
   </details>
   <input class="search" id="q" type="search" placeholder="Search your list…" autocomplete="off" autocorrect="off" enterkeyhint="search" aria-label="Search your list">
   <div class="tabs" id="tabs"><button data-f="todo" class="on"></button><button data-f="done"></button><button data-f="all"></button></div>
-  <div class="tabs small" id="types"><button data-t="" class="on">All types</button><button data-t="movie">Movies</button><button data-t="show">Shows</button></div>
+  <div class="tabs small" id="types"></div>
   <ul id="list"></ul>
   <div class="note">Saved on this device only</div>
+  </div>
 </main>
 <div class="toast" id="toast" role="status"></div>
 <script>
@@ -113,7 +135,12 @@ var $=function(s){return document.querySelector(s)};
 var mk=function(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 var items=new Map(),filter='todo',tfilter='',editing=null,es=null,store,tt;
 var inp=$('#inp'),qEl=$('#q'),list=$('#list'),toastEl=$('#toast');
-var LS='watchlist-v1';
+var LS='watchlist-v1',cfg=null;
+var CFG={
+  movies:{key:'watchlist-v1',title:'🎬 Watchlist',ph:'Movie or show…',types:[['movie','Movie','Movies'],['show','Show','Shows']],todo:'To watch',done:'Watched',file:'watchlist',app:'watchlist'},
+  games:{key:'gamelist-v1',title:'🎮 Games',ph:'Game…',types:[['pc','PC','PC'],['console','Console','Console'],['mobile','Mobile','Mobile']],todo:'To play',done:'Played',file:'games',app:'gamelist'}
+};
+function typeLabel(v){var t=cfg.types.filter(function(x){return x[0]===v})[0];return t?t[1]:''}
 
 function keyOf(t){
   var k=t.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,100);
@@ -175,7 +202,7 @@ function pick(){
   if(!pool.length){box.textContent='Nothing left to pick. Add something first.';return}
   var r=pool[Math.floor(Math.random()*pool.length)];
   box.append(mk('small','','Tonight’s pick'),mk('b','',r.title));
-  var row=mk('div','row'),a=mk('button','paste sm','Another'),w=mk('button','go sm','Watched ✓'),c=mk('button','paste sm','Close');
+  var row=mk('div','row'),a=mk('button','paste sm','Another'),w=mk('button','go sm',cfg.done+' ✓'),c=mk('button','paste sm','Close');
   a.onclick=pick;w.onclick=function(){toggle(r.id);box.hidden=true};c.onclick=function(){box.hidden=true};
   row.append(a,w,c);box.append(row);
 }
@@ -201,8 +228,8 @@ async function importAll(){
   toast('Added '+added+(skipped?' · '+skipped+' already on your list':''),4000);
 }
 async function exportBackup(){
-  var name='watchlist-backup-'+new Date().toISOString().slice(0,10)+'.json';
-  var file=new File([JSON.stringify({app:'watchlist',version:2,items:Array.from(items.values())},null,1)],name,{type:'application/json'});
+  var name=cfg.file+'-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  var file=new File([JSON.stringify({app:cfg.app,version:2,items:Array.from(items.values())},null,1)],name,{type:'application/json'});
   try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file]});return}}catch(e){if(e.name==='AbortError')return}
   var a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.append(a);a.click();a.remove();toast('Backup saved');
 }
@@ -212,7 +239,7 @@ async function restore(data){
     if(!r||typeof r.title!=='string'||!r.title.trim())continue;
     var title=r.title.trim().replace(/\s+/g,' '),id=keyOf(title);if(items.has(id))continue;
     var rec={title:title,watched:!!r.watched,added:+r.added||Date.now()};
-    if(r.type==='movie'||r.type==='show')rec.type=r.type;
+    if(typeLabel(r.type))rec.type=r.type;
     if(r.rating>=1&&r.rating<=5)rec.rating=Math.round(r.rating);
     if(typeof r.note==='string'&&r.note)rec.note=r.note.slice(0,200);
     await store.set(id,rec);added++;
@@ -230,7 +257,7 @@ function stars(row,v,onset){
 }
 function buildEditor(li,r){
   var ti=mk('input','field');ti.value=es.title;ti.oninput=function(){es.title=ti.value};
-  var sel=mk('select','field');[['','no type'],['movie','Movie'],['show','Show']].forEach(function(o){var op=mk('option','',o[1]);op.value=o[0];sel.append(op)});
+  var sel=mk('select','field');[['','no type']].concat(cfg.types).forEach(function(o){var op=mk('option','',o[1]);op.value=o[0];sel.append(op)});
   sel.value=es.type;sel.onchange=function(){es.type=sel.value};
   var st=mk('div','stars');stars(st,es.rating,function(v){es.rating=v});
   var nt=mk('input','field');nt.placeholder='Note, e.g. where to watch';nt.value=es.note;nt.oninput=function(){es.note=nt.value};
@@ -247,7 +274,7 @@ function render(){
   $('#tabs').classList.toggle('dim',!!q);
   document.querySelectorAll('#tabs button').forEach(function(b){
     var f=b.dataset.f,n=f==='todo'?todo.length:f==='done'?done.length:base.length;
-    b.textContent=(f==='todo'?'To watch':f==='done'?'Watched':'All')+' · '+n;b.classList.toggle('on',f===filter);
+    b.textContent=(f==='todo'?cfg.todo:f==='done'?cfg.done:'All')+' · '+n;b.classList.toggle('on',f===filter);
   });
   document.querySelectorAll('#types button').forEach(function(b){b.classList.toggle('on',b.dataset.t===tfilter)});
   list.textContent='';
@@ -258,9 +285,9 @@ function render(){
     var li=document.createElement('li');
     if(editing===r.id){li.className='edit';buildEditor(li,r);list.append(li);return}
     if(r.watched)li.className='done';
-    var c=mk('button','chk',r.watched?'✓':'');c.setAttribute('aria-label',r.watched?'Mark as not watched':'Mark as watched');c.onclick=function(){toggle(r.id)};
+    var c=mk('button','chk',r.watched?'✓':'');c.setAttribute('aria-label',r.watched?'Mark as not '+cfg.done.toLowerCase():'Mark as '+cfg.done.toLowerCase());c.onclick=function(){toggle(r.id)};
     var t=mk('div','t');t.setAttribute('role','button');t.tabIndex=0;t.append(mk('div','',r.title));
-    var meta=[];if(r.type)meta.push(r.type==='show'?'Show':'Movie');if(r.rating)meta.push('★'.repeat(r.rating));if(r.note)meta.push(r.note);
+    var meta=[];if(r.type&&typeLabel(r.type))meta.push(typeLabel(r.type));if(r.rating)meta.push('★'.repeat(r.rating));if(r.note)meta.push(r.note);
     if(meta.length)t.append(mk('small','',meta.join(' · ')));
     t.onclick=function(){startEdit(r.id)};t.onkeydown=function(e){if(e.key==='Enter')startEdit(r.id)};
     var d=mk('button','del','×');d.setAttribute('aria-label','Remove');d.onclick=function(){remove(r.id)};
@@ -286,13 +313,27 @@ inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault(
 qEl.addEventListener('input',render);qEl.addEventListener('keydown',function(e){if(e.key==='Enter')qEl.blur()});
 $('#tabs').onclick=function(e){var f=e.target.dataset&&e.target.dataset.f;if(f){filter=f;qEl.value='';render()}};
 $('#types').onclick=function(e){var t=e.target.dataset&&e.target.dataset.t;if(t!==undefined){tfilter=t;qEl.value='';render()}};
-function checkHash(){var on=location.hash==='#add';$('#banner').classList.toggle('on',on);if(on){filter='todo';render()}}
-window.addEventListener('hashchange',checkHash);
+function enter(name,banner){
+  cfg=CFG[name];LS=cfg.key;store=localStore();
+  document.documentElement.dataset.section=name;
+  filter='todo';tfilter='';editing=null;es=null;qEl.value='';$('#bulk').value='';$('#pick').hidden=true;
+  $('#ttl').textContent=cfg.title;inp.placeholder=cfg.ph;
+  var ns=$('#newtype');ns.textContent='';[['','no type']].concat(cfg.types).forEach(function(o){var op=mk('option','',o[1]);op.value=o[0];ns.append(op)});
+  var ty=$('#types');ty.textContent='';[['','','All types']].concat(cfg.types.map(function(t){return [t[0],t[1],t[2]]})).forEach(function(o){var b=mk('button','',o[2]);b.dataset.t=o[0];ty.append(b)});
+  $('#banner').classList.toggle('on',!!banner);
+  $('#home').hidden=true;$('#app').hidden=false;updateCount();render();window.scrollTo(0,0);
+}
+function home(){
+  $('#app').hidden=true;$('#home').hidden=false;delete document.documentElement.dataset.section;
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+}
+function route(){var h=location.hash;if(h==='#add')enter('movies',true);else if(h==='#addgame')enter('games',true);return h==='#add'||h==='#addgame'}
+window.addEventListener('hashchange',route);
+$('#go-movies').onclick=function(){enter('movies')};$('#go-games').onclick=function(){enter('games')};$('#back').onclick=home;
 
-store=localStore();
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
 if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0)navigator.serviceWorker.register('sw.js').catch(function(){});
-render();checkHash();
+route();
 })();
 </script>
 </body>
